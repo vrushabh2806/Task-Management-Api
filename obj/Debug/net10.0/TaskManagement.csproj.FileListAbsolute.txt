@@ -159,3 +159,6 @@ C:\Users\Admin\Documents\Task Management Api\TaskManagement\bin\Debug\net10.0\ru
 C:\Users\Admin\Documents\Task Management Api\TaskManagement\bin\Debug\net10.0\runtimes\win-x64\native\Microsoft.Data.SqlClient.SNI.dll
 C:\Users\Admin\Documents\Task Management Api\TaskManagement\bin\Debug\net10.0\runtimes\win-x86\native\Microsoft.Data.SqlClient.SNI.dll
 C:\Users\Admin\Documents\Task Management Api\TaskManagement\obj\Debug\net10.0\TaskManagement.sourcelink.json
+C:\Users\Admin\Documents\Task Management Api\TaskManagement\bin\Debug\net10.0\Swashbuckle.AspNetCore.Swagger.dll
+C:\Users\Admin\Documents\Task Management Api\TaskManagement\bin\Debug\net10.0\Swashbuckle.AspNetCore.SwaggerGen.dll
+C:\Users\Admin\Documents\Task Management Api\TaskManagement\bin\Debug\net10.0\Swashbuckle.AspNetCore.SwaggerUI.dll
