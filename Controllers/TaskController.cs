@@ -6,6 +6,7 @@ using TaskManagement.Services;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Authorization;
 using TaskManagement.Extensions;
+using System.Runtime.CompilerServices;
 
 
 
@@ -88,6 +89,73 @@ namespace TaskManagement.Controllers
             }
         }
 
+        [HttpPut("{id}")]
+        public async Task<IActionResult> UpdateTask(int id, [FromBody] UpdateTaskDto updateTaskDto)
+        {
+            try
+            {
+             var userId=User.GetUserId();
+             var updatedTask=await _taskService.UpdateTaskAsync(id,updateTaskDto,userId);
+                if(updatedTask==null)
+                {
+                    return NotFound();
+                }
+                return Ok(updatedTask);
+            }
+            catch(UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ex.Message);
+            }
+             catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, "An error occurred while processing your request.");
+            }
 
+        }
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteTask(int id)
+        {
+            try
+            {
+              var userId=User.GetUserId();
+              var success=await _taskService.DeleteTaskAsync(id,userId);
+                if(!success)
+                {
+                    return NotFound();
+                }
+                return NoContent();   
+            }
+            catch(UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ex.Message);
+            }
+             catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, "An error occurred while processing your request.");
+            }
+        }
+   
+           [HttpPatch("{id}/toggle-completion")]
+        public async Task<IActionResult> ToggleTaskCompletion(int id)
+        {
+            try
+            {
+                var userId=User.GetUserId();
+                var updatedTask=await _taskService.ToggleTaskCompletionAsync(id,userId);
+                if(updatedTask==null)
+                {
+                    return NotFound();
+                }
+                return Ok(updatedTask);
+            }
+            catch(UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ex.Message);
+            }
+             catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, "An error occurred while processing your request.");
+            }
+        }
     }
 }
