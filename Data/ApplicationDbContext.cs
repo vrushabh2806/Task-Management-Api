@@ -12,6 +12,9 @@ namespace TaskManagement.Data
         public DbSet<User> Users { get; set; }
         public DbSet<TaskItem> Tasks{ get; set; }
 
+        public DbSet<Role> Roles{get; set;}
+
+    
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -20,6 +23,14 @@ namespace TaskManagement.Data
                 .WithOne(t => t.User)
                 .HasForeignKey(t => t.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+                 
+                 modelBuilder.Entity<Role>()
+                .HasMany(r => r.Users)
+                .WithOne(u => u.Role)
+                .HasForeignKey(u => u.RoleId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+
 
                 modelBuilder.Entity<User>()
                 .HasIndex(u => u.Email)
@@ -28,6 +39,36 @@ namespace TaskManagement.Data
                 modelBuilder.Entity<User>()
                 .HasIndex(u => u.Username)
                 .IsUnique();
+
+                modelBuilder.Entity<Role>()
+                .HasIndex(R=>R.Name)
+                .IsUnique();
+
+                modelBuilder.Entity<Role>().HasData(
+                new Role
+                {
+                    Id = 1,
+                    Name = "Admin",
+                    Description = "Full system access - can manage users and all tasks",
+                    CreatedAt = new DateTime(2026, 3, 11, 0, 0, 0, DateTimeKind.Utc)
+                },
+                new Role
+                {
+                    Id = 2,
+                    Name = "Manager",
+                    Description = "Can view all tasks but only modify own tasks",
+                    CreatedAt = new DateTime(2026, 3, 11, 0, 0, 0, DateTimeKind.Utc)
+                },
+                new Role
+                {
+                    Id = 3,
+                    Name = "User",
+                    Description = "Can only manage own tasks",
+                    CreatedAt = new DateTime(2026, 3, 11, 0, 0, 0, DateTimeKind.Utc)
+                }
+            );
+
+
 
 
 

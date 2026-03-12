@@ -1,9 +1,11 @@
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using TaskManagement.Data;
 using TaskManagement.Services;
+using TaskManagement.Constants;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -35,6 +37,12 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AdminOnly", policy => policy.RequireRole(RoleConstants.Admin));
+    options.AddPolicy("ManagerOrAdmin", policy => policy.RequireRole(RoleConstants.Admin, RoleConstants.Manager));
+    options.AddPolicy("AuthenticatedUser", policy => policy.RequireRole(RoleConstants.User));
+});
  
 var app = builder.Build();
 

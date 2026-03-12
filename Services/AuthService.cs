@@ -7,8 +7,9 @@ using TaskManagement.DTOs;
 using TaskManagement.Models;
 using TaskManagement.Data;
 using TaskManagement.Services;
-//using System.Security.Claims;
+using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
+using TaskManagement.Constants;
 namespace TaskManagement.Services
 {
     public class AuthService : IAuthService
@@ -23,33 +24,36 @@ namespace TaskManagement.Services
         public async Task<UserResponseDto> RegisterAsync(RegisterDto registerDto)
 
         {
-            var existinguUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == registerDto.Email || u.Username == registerDto.Username);
-            if (existinguUser != null)
-            {
-                throw new Exception("Username already exists.");
-            }
-            var passwordHash = BCrypt.Net.BCrypt.HashPassword(registerDto.Password);
-            var user = new User
-            {
-                Username = registerDto.Username,
-                Email = registerDto.Email,
-                PasswordHash = passwordHash,
-                CreatedAt = DateTime.UtcNow
-            };
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
-            return new UserResponseDto
-            {
-                Id = user.Id,
-                Username = user.Username,
-                Email = user.Email,
-                CreatedAt = user.CreatedAt
-            };
+            // var existinguUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == registerDto.Email || u.Username == registerDto.Username);
+            // if (existinguUser != null)
+            // {
+            //     throw new Exception("Username already exists.");
+            // }
+            // var passwordHash = BCrypt.Net.BCrypt.HashPassword(registerDto.Password);
+            // var user = new User
+            // {
+            //     Username = registerDto.Username,
+            //     Email = registerDto.Email,
+            //     PasswordHash = passwordHash,
+            //     CreatedAt = DateTime.UtcNow
+            // };
+            // _context.Users.Add(user);
+            // await _context.SaveChangesAsync();
+            // return new UserResponseDto
+            // {
+            //     Id = user.Id,
+            //     Username = user.Username,
+            //     Email = user.Email,
+            //     CreatedAt = user.CreatedAt
+            // };
+
+            return await RegisterWithRoleAsync(registerDto, RoleConstants.User);
 
         }
         public async Task<LoginResponseDto> LoginAsync(LoginDto loginDto)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == loginDto.Email);
+            var user = await _context.Users.Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.Email == loginDto.Email);
             if (user == null)
             {
                 throw new UnauthorizedAccessException("Invalid email or password.");
@@ -68,12 +72,50 @@ namespace TaskManagement.Services
                     Id=user.Id,
                     Username=user.Username,
                     Email=user.Email,
-                    CreatedAt=user.CreatedAt
+                    CreatedAt=user.CreatedAt,
+                    Role=user.Role?.Name
                  },
                  ExpiredAt=expirationInMinutes > 0 ? DateTime.UtcNow.AddMinutes(expirationInMinutes) : DateTime.UtcNow.AddHours(1)
             };
 
 
+        }
+        public async Task<UserResponseDto> RegisterWithRoleAsync(RegisterDto registerDto, string roleName)
+        {
+           var existingUser=await _context.Users.FirstOrDefaultAsync(u=>u.Email==registerDto.Email || u.Username==registerDto.Username);
+           if(existingUser!=null)
+           {
+                throw new Exception("Username already exists.");
+           }
+           var role=await _context.Roles.FirstOrDefaultAsync(r=>r.Name==roleName);
+            if(role==null)
+            {
+               role=await _context.Roles.FirstOrDefaultAsync(r=>r.Name==RoleConstants.User);
+               if(role==null)
+               {
+                    throw new Exception("Default user role not found. Please ensure the database is seeded with roles.");
+               }
+            }
+            var passwordHash=BCrypt.Net.BCrypt.HashPassword(registerDto.Password);
+            var user=new User
+            {
+                Username=registerDto.Username,
+                Email=registerDto.Email,
+                PasswordHash=passwordHash,
+                RoleId=role.Id,
+                CreatedAt=DateTime.UtcNow
+            };
+            _context.Users.Add(user);
+            await _context.SaveChangesAsync();
+            await _context.Entry(user).Reference(u=>u.Role).LoadAsync();
+            return new UserResponseDto
+            {
+                Id=user.Id,
+                Username=user.Username,
+                Email=user.Email,
+                CreatedAt=user.CreatedAt,
+                Role=user.Role?.Name
+            };
         }
         private string GenerateJwtToken(User user)
         {
@@ -112,7 +154,8 @@ namespace TaskManagement.Services
                 new System.Security.Claims.Claim(JwtRegisteredClaimNames.Sub,user.Id.ToString()),
                 new System.Security.Claims.Claim(JwtRegisteredClaimNames.UniqueName,user.Username ?? ""),
                 new System.Security.Claims.Claim(JwtRegisteredClaimNames.Email,user.Email ?? ""),
-                new System.Security.Claims.Claim(JwtRegisteredClaimNames.Jti,Guid.NewGuid().ToString())
+                new System.Security.Claims.Claim(JwtRegisteredClaimNames.Jti,Guid.NewGuid().ToString()),
+                new System.Security.Claims.Claim(ClaimTypes.Role,user.Role?.Name ?? "")
             };
             var token = new JwtSecurityToken(
                 issuer: issuer,

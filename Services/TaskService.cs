@@ -46,7 +46,7 @@ namespace TaskManagement.Services
                 UserId = taskItem.UserId
             };
         }
-        public async Task<IEnumerable<TaskResponseDto>> GetTasksUserTasksAsync(int userId)
+        public async Task<IEnumerable<TaskResponseDto>> GetUserTasksAsync(int userId)
         {
             var tasks = await _context.Tasks.Where(t => t.UserId == userId).OrderByDescending(t => t.CreatedAt).Select(t => new TaskResponseDto
             {
@@ -132,12 +132,12 @@ namespace TaskManagement.Services
 
         public async Task<TaskResponseDto> ToggleTaskCompletionAsync(int taskId, int userId)
         {
-            var task=await _context.Tasks.FirstOrDefaultAsync(t=>t.Id==taskId && t.UserId==userId);
-            if(task==null)
+            var task = await _context.Tasks.FirstOrDefaultAsync(t => t.Id == taskId && t.UserId == userId);
+            if (task == null)
             {
                 return null;
             }
-            task.IsCompleted=!task.IsCompleted;
+            task.IsCompleted = !task.IsCompleted;
             await _context.SaveChangesAsync();
             return new TaskResponseDto
             {
@@ -152,7 +152,88 @@ namespace TaskManagement.Services
             };
         }
 
+        public async Task<IEnumerable<TaskResponseDto>> GetAllTasksAsync()
+        {
+            var tasks = await _context.Tasks.OrderByDescending(t => t.CreatedAt).Select(t => new TaskResponseDto
+            {
+                Id = t.Id,
+                Title = t.Title,
+                Description = t.Description,
+                IsCompleted = t.IsCompleted,
+                Priority = t.Priority,
+                DueDate = t.DueDate,
+                CreatedAt = t.CreatedAt,
+                UserId = t.UserId
+            }).ToListAsync();
+            return tasks;
+        }
+
+        public async Task<TaskResponseDto> GetAnyTaskByIdAsync(int taskId)
+        {
+            var task = await _context.Tasks.Where(t => t.Id == taskId).OrderByDescending(t => t.CreatedAt).Select(t => new TaskResponseDto
+            {
+                Id = t.Id,
+                Title = t.Title,
+                Description = t.Description,
+                IsCompleted = t.IsCompleted,
+                Priority = t.Priority,
+                DueDate = t.DueDate,
+                CreatedAt = t.CreatedAt,
+                UserId = t.UserId
+            }).FirstOrDefaultAsync();
+            return task;
+        }
+
+        public async Task<TaskResponseDto> UpdateAnyTaskAsync(int taskId, UpdateTaskDto updateTaskDto)
+        {
+            var task = await _context.Tasks.FirstOrDefaultAsync(t => t.Id == taskId);
+            if (task == null)
+            {
+                return null;
+            }
+            if (updateTaskDto.Title != null)
+            {
+                task.Title = updateTaskDto.Title;
+            }
+            if (updateTaskDto.Description != null)
+            {
+                task.Description = updateTaskDto.Description;
+            }
+            if (updateTaskDto.IsCompleted.HasValue)
+            {
+                task.IsCompleted = updateTaskDto.IsCompleted.Value;
+            }
+            if (updateTaskDto.Priority.HasValue)
+            {
+                task.Priority = updateTaskDto.Priority.Value;
+            }
+            if (updateTaskDto.DueDate.HasValue)
+            {
+                task.DueDate = updateTaskDto.DueDate.Value;
+            }
+            await _context.SaveChangesAsync();
+            return new TaskResponseDto
+            {
+                Id = task.Id,
+                Title = task.Title,
+                Description = task.Description,
+                IsCompleted = task.IsCompleted,
+                Priority = task.Priority,
+                DueDate = task.DueDate,
+                CreatedAt = task.CreatedAt,
+            };
+        }
+        public async Task<bool> DeleteAnyTaskAsync(int taskId)
+        {
+            var task = await _context.Tasks.FirstOrDefaultAsync(t => t.Id == taskId);
+            if (task == null)
+            {
+                return false;
+            }
+            _context.Tasks.Remove(task);
+            await _context.SaveChangesAsync();
+            return true;
+        }
+
     }
-
-
 }

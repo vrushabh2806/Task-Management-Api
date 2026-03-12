@@ -7,14 +7,15 @@ using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Authorization;
 using TaskManagement.Extensions;
 using System.Runtime.CompilerServices;
+using TaskManagement.Constants;
 
 
 
 namespace TaskManagement.Controllers
 {
-     [Route("api/[controller]")]   
-      [ApiController]
-      [Authorize]
+    [Route("api/[controller]")]
+    [ApiController]
+    [Authorize]
     public class TaskController : ControllerBase
     {
         private readonly ITaskService _taskService;
@@ -28,19 +29,19 @@ namespace TaskManagement.Controllers
         {
             try
             {
-            //     var userId=int.Parse(User.Claims.FirstOrDefault(c => c.Type == "UserId")?.Value);
-            //     var task=await _taskService.CreateTaskAsync(createTaskDto,userId);
-            //     return CreatedAtAction(nameof(GetTaskById), new { id = task.Id }, task);
-            // 
-            var userId=User.GetUserId();
-            var task=await _taskService.CreateTaskAsync(createTaskDto,userId);
-            return CreatedAtAction(nameof(GetTaskById), new { id = task.Id }, task);
+                //     var userId=int.Parse(User.Claims.FirstOrDefault(c => c.Type == "UserId")?.Value);
+                //     var task=await _taskService.CreateTaskAsync(createTaskDto,userId);
+                //     return CreatedAtAction(nameof(GetTaskById), new { id = task.Id }, task);
+                // 
+                var userId = User.GetUserId();
+                var task = await _taskService.CreateTaskAsync(createTaskDto, userId);
+                return CreatedAtAction(nameof(GetTaskById), new { id = task.Id }, task);
             }
-            catch(UnauthorizedAccessException ex)
+            catch (UnauthorizedAccessException ex)
             {
                 return Unauthorized(ex.Message);
             }
-             catch (Exception ex)
+            catch (Exception ex)
             {
                 return StatusCode(StatusCodes.Status500InternalServerError, "An error occurred while processing your request.");
 
@@ -52,38 +53,56 @@ namespace TaskManagement.Controllers
         {
             try
             {
-               var userId=User.GetUserId();
-               var tasks=await _taskService. GetTasksUserTasksAsync(userId);
-               return Ok(tasks);
-            } 
-            catch(UnauthorizedAccessException ex)
+                var userId = User.GetUserId();
+                //var tasks=await _taskService.GetTasksUserTasksAsync(userId);
+                var userRole = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+                IEnumerable<TaskResponseDto> tasks;
+                if (userRole == RoleConstants.Manager || userRole == RoleConstants.Admin)
+                {
+                    tasks = await _taskService.GetAllTasksAsync();
+                }
+                else
+                {
+                    tasks = await _taskService.GetUserTasksAsync(userId);
+                }
+                return Ok(tasks);
+            }
+            catch (UnauthorizedAccessException ex)
             {
                 return Unauthorized(ex.Message);
             }
-             catch (Exception ex)
+            catch (Exception ex)
             {
                 return StatusCode(StatusCodes.Status500InternalServerError, "An error occurred while processing your request.");
             }
         }
-       
-       [HttpGet("{id}")]
-       public async Task<IActionResult> GetTaskById(int id)
+
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetTaskById(int id)
         {
             try
             {
-             var userId=User.GetUserId();
-             var task=await _taskService.GetTaskByIdAsync(id,userId);
-                if(task==null)
+                var userId = User.GetUserId();
+                var userRole = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+                var task = await _taskService.GetTaskByIdAsync(id, userId);
+                if (task == null)
                 {
-                    return NotFound();
+                    if (userRole == RoleConstants.Manager || userRole == RoleConstants.Admin)
+                    {
+                        task = await _taskService.GetAnyTaskByIdAsync(id);
+                    }
+                    if (task == null)
+                    {
+                        return NotFound();
+                    }
                 }
                 return Ok(task);
             }
-            catch(UnauthorizedAccessException ex)
+            catch (UnauthorizedAccessException ex)
             {
                 return Unauthorized(ex.Message);
             }
-             catch (Exception ex)
+            catch (Exception ex)
             {
                 return StatusCode(StatusCodes.Status500InternalServerError, "An error occurred while processing your request.");
             }
@@ -94,65 +113,79 @@ namespace TaskManagement.Controllers
         {
             try
             {
-             var userId=User.GetUserId();
-             var updatedTask=await _taskService.UpdateTaskAsync(id,updateTaskDto,userId);
-                if(updatedTask==null)
+                var userId = User.GetUserId();
+                var userRole = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+
+                //var updatedTask=await _taskService.UpdateTaskAsync(id,updateTaskDto,userId);
+                TaskResponseDto? updatedTask;
+                if (userRole == RoleConstants.Manager || userRole == RoleConstants.Admin)
+                {
+                    updatedTask = await _taskService.UpdateAnyTaskAsync(id, updateTaskDto);
+                }
+                else
+                {
+                    updatedTask = await _taskService.UpdateTaskAsync(id, updateTaskDto, userId);
+                }
+                if (updatedTask == null)
                 {
                     return NotFound();
                 }
                 return Ok(updatedTask);
             }
-            catch(UnauthorizedAccessException ex)
+            catch (UnauthorizedAccessException ex)
             {
                 return Unauthorized(ex.Message);
             }
-             catch (Exception ex)
+            catch (Exception ex)
             {
                 return StatusCode(StatusCodes.Status500InternalServerError, "An error occurred while processing your request.");
             }
 
         }
+
+
         [HttpDelete("{id}")]
+        [Authorize(Policy = "AdminOnly")]
         public async Task<IActionResult> DeleteTask(int id)
         {
             try
             {
-              var userId=User.GetUserId();
-              var success=await _taskService.DeleteTaskAsync(id,userId);
-                if(!success)
+                var userId = User.GetUserId();
+                var success = await _taskService.DeleteAnyTaskAsync(id);
+                if (!success)
                 {
                     return NotFound();
                 }
-                return NoContent();   
+                return NoContent();
             }
-            catch(UnauthorizedAccessException ex)
+            catch (UnauthorizedAccessException ex)
             {
                 return Unauthorized(ex.Message);
             }
-             catch (Exception ex)
+            catch (Exception ex)
             {
                 return StatusCode(StatusCodes.Status500InternalServerError, "An error occurred while processing your request.");
             }
         }
-   
-           [HttpPatch("{id}/toggle-completion")]
+
+        [HttpPatch("{id}/toggle-completion")]
         public async Task<IActionResult> ToggleTaskCompletion(int id)
         {
             try
             {
-                var userId=User.GetUserId();
-                var updatedTask=await _taskService.ToggleTaskCompletionAsync(id,userId);
-                if(updatedTask==null)
+                var userId = User.GetUserId();
+                var updatedTask = await _taskService.ToggleTaskCompletionAsync(id, userId);
+                if (updatedTask == null)
                 {
                     return NotFound();
                 }
                 return Ok(updatedTask);
             }
-            catch(UnauthorizedAccessException ex)
+            catch (UnauthorizedAccessException ex)
             {
                 return Unauthorized(ex.Message);
             }
-             catch (Exception ex)
+            catch (Exception ex)
             {
                 return StatusCode(StatusCodes.Status500InternalServerError, "An error occurred while processing your request.");
             }
