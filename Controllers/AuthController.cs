@@ -4,7 +4,8 @@ using Microsoft.AspNetCore.Http;
 using TaskManagement.DTOs;
 using TaskManagement.Services;
 using System.Net.Http.Headers;
-
+using TokenManagement.DTOs;
+using Microsoft.AspNetCore.Authorization;
 
 namespace TaskManagement.Controllers
 {
@@ -23,8 +24,8 @@ namespace TaskManagement.Controllers
         {
             try
             {
-                var user=await _authService.RegisterAsync(registerDto);
-                return CreatedAtAction(nameof(Register),new { id = user.Id }, user);
+                var user = await _authService.RegisterAsync(registerDto);
+                return CreatedAtAction(nameof(Register), new { id = user.Id }, user);
             }
             catch (InvalidOperationException ex)
             {
@@ -41,10 +42,12 @@ namespace TaskManagement.Controllers
         {
             try
             {
-                var response=await _authService.LoginAsync(loginDto);
+                var ipAddress = GetIpAddress();
+                var response = await _authService.LoginAsync(loginDto, ipAddress);
+                SetRefreshTokenCookie(response.RefreshToken);
                 return Ok(response);
             }
-            catch(UnauthorizedAccessException ex)
+            catch (UnauthorizedAccessException ex)
             {
                 return Unauthorized(ex.Message);
             }
@@ -52,7 +55,70 @@ namespace TaskManagement.Controllers
             {
                 return StatusCode(StatusCodes.Status500InternalServerError, "An error occurred while processing your request.");
             }
-        }    
+        }
+        [HttpPost("refresh-token")]
+        public async Task<IActionResult> RefershToken([FromBody] RefreshTokenRequestDto request)
+        {
+            try
+            {
+                var IpAddress = GetIpAddress();
+                var response = await _authService.RefreshTokenAsync(request.RefreshToken, IpAddress);
+                SetRefreshTokenCookie(response.RefreshToken);
+                return Ok(response);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, "An error occurred while processing your request.");
+            }
+        }
+        
+        [HttpPost("revoke-token")]
+        [Authorize]
+        public async Task<IActionResult> RevokeToken([FromBody] RefreshTokenRequestDto request)
+        {
+            try
+            {
+                var ipAddress = GetIpAddress();
+                var success = await _authService.RevokeTokenAsync(request.RefreshToken, ipAddress);
+                if (!success)
+                {
+                    return NotFound("Token not found.");
+                }
+                return NoContent();
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ex.Message);
+            }  
+        }
+            
+        private string GetIpAddress()
+        {
+            if (Request.Headers.ContainsKey("X-Forwarded-For:")) ;
+            {
+                return Request.Headers["X-Forwarded-For"].ToString();
+
+            }
+            return HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+        }
+
+        private void SetRefreshTokenCookie(string refreshToken)
+        {
+            var cookieOptions = new CookieOptions
+            {
+                HttpOnly = true,
+                Expires = DateTime.UtcNow.AddDays(7),
+                Secure = true,
+                SameSite = SameSiteMode.Strict,
+                Path = "/api/auth/refresh-token"
+            };
+            Response.Cookies.Append("refreshToken", refreshToken, cookieOptions);
+        }
+    
     
     }
 }

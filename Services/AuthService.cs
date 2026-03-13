@@ -10,6 +10,10 @@ using TaskManagement.Services;
 using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
 using TaskManagement.Constants;
+using System.Net;
+using System.Security.Cryptography;
+using TaskManagement.Migrations;
+using Microsoft.Identity.Client;
 namespace TaskManagement.Services
 {
     public class AuthService : IAuthService
@@ -50,7 +54,7 @@ namespace TaskManagement.Services
             return await RegisterWithRoleAsync(registerDto, RoleConstants.User);
 
         }
-        public async Task<LoginResponseDto> LoginAsync(LoginDto loginDto)
+        public async Task<LoginResponseDto> LoginAsync(LoginDto loginDto, string ipAddress)
         {
             var user = await _context.Users.Include(u => u.Role)
             .FirstOrDefaultAsync(u => u.Email == loginDto.Email);
@@ -63,61 +67,115 @@ namespace TaskManagement.Services
             {
                 throw new UnauthorizedAccessException("Invalid email or password.");
             }
-            var token = GenerateJwtToken(user);
-            var expirationInMinutes=double.Parse(_configuration["JwtSettings:ExpirationInMinutes"] ?? "60");
+            var accessToken = GenerateAccessToken(user);
+            var refreshToken = GenerateRefreshToken(ipAddress);
+            refreshToken.UserId = user.Id;
+            _context.RefreshTokens.Add(refreshToken);
+            await RemoveOldRefreshTokens(user.Id);
+            await _context.SaveChangesAsync();
+            var accessTokenExpiry = DateTime.UtcNow.AddMinutes(double.Parse(_configuration["JwtSettings:ExpirationInMinutes"] ?? "60"));
+
+
+            var expirationInMinutes = double.Parse(_configuration["JwtSettings:ExpirationInMinutes"] ?? "60");
             return new LoginResponseDto
             {
-                 Token=token,
-                 User=new UserResponseDto{
-                    Id=user.Id,
-                    Username=user.Username,
-                    Email=user.Email,
-                    CreatedAt=user.CreatedAt,
-                    Role=user.Role?.Name
-                 },
-                 ExpiredAt=expirationInMinutes > 0 ? DateTime.UtcNow.AddMinutes(expirationInMinutes) : DateTime.UtcNow.AddHours(1)
+                AccessToken = accessToken,
+                RefreshToken = refreshToken.Token,
+                User = new UserResponseDto
+                {
+                    Id = user.Id,
+                    Username = user.Username,
+                    Email = user.Email,
+                    CreatedAt = user.CreatedAt,
+                    Role = user.Role?.Name
+                },
+                AccessTokenExpiresAt = accessTokenExpiry,
+                RefreshTokenExpiresAt = refreshToken.ExpiresAt
             };
 
 
         }
         public async Task<UserResponseDto> RegisterWithRoleAsync(RegisterDto registerDto, string roleName)
         {
-           var existingUser=await _context.Users.FirstOrDefaultAsync(u=>u.Email==registerDto.Email || u.Username==registerDto.Username);
-           if(existingUser!=null)
-           {
+            var existingUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == registerDto.Email || u.Username == registerDto.Username);
+            if (existingUser != null)
+            {
                 throw new Exception("Username already exists.");
-           }
-           var role=await _context.Roles.FirstOrDefaultAsync(r=>r.Name==roleName);
-            if(role==null)
-            {
-               role=await _context.Roles.FirstOrDefaultAsync(r=>r.Name==RoleConstants.User);
-               if(role==null)
-               {
-                    throw new Exception("Default user role not found. Please ensure the database is seeded with roles.");
-               }
             }
-            var passwordHash=BCrypt.Net.BCrypt.HashPassword(registerDto.Password);
-            var user=new User
+            var role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == roleName);
+            if (role == null)
             {
-                Username=registerDto.Username,
-                Email=registerDto.Email,
-                PasswordHash=passwordHash,
-                RoleId=role.Id,
-                CreatedAt=DateTime.UtcNow
+                role = await _context.Roles.FirstOrDefaultAsync(r => r.Name == RoleConstants.User);
+                if (role == null)
+                {
+                    throw new Exception("Default user role not found. Please ensure the database is seeded with roles.");
+                }
+            }
+            var passwordHash = BCrypt.Net.BCrypt.HashPassword(registerDto.Password);
+            var user = new User
+            {
+                Username = registerDto.Username,
+                Email = registerDto.Email,
+                PasswordHash = passwordHash,
+                RoleId = role.Id,
+                CreatedAt = DateTime.UtcNow
             };
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
-            await _context.Entry(user).Reference(u=>u.Role).LoadAsync();
+            await _context.Entry(user).Reference(u => u.Role).LoadAsync();
             return new UserResponseDto
             {
-                Id=user.Id,
-                Username=user.Username,
-                Email=user.Email,
-                CreatedAt=user.CreatedAt,
-                Role=user.Role?.Name
+                Id = user.Id,
+                Username = user.Username,
+                Email = user.Email,
+                CreatedAt = user.CreatedAt,
+                Role = user.Role?.Name
             };
         }
-        private string GenerateJwtToken(User user)
+
+        public async Task<RefreshTokenResponseDto> RefreshTokenAsync(string token, string ipAddress)
+        {
+            var user = await GetUserByRefreshToken(token);
+            var refreshToken = user.RefreshTokens.Single(rt => rt.Token == token);
+            if (!refreshToken.IsActive)
+            {
+                throw new UnauthorizedAccessException("Invalid refresh token.");
+            }
+            var newAccessToken = GenerateAccessToken(user);
+            var newRefreshToken = GenerateRefreshToken(ipAddress);
+            refreshToken.RevokedAt = DateTime.UtcNow;
+
+            refreshToken.RevokedAt = DateTime.UtcNow;
+            refreshToken.RevokedByIp = ipAddress;
+            refreshToken.ReplacedByToken = newRefreshToken.Token;
+
+            _context.RefreshTokens.Add(newRefreshToken);
+            await RemoveOldRefreshTokens(user.Id);
+            await _context.SaveChangesAsync();
+            var accessTokenExpiry = DateTime.UtcNow.AddMinutes(double.Parse(_configuration["JwtSettings:ExpirationInMinutes"] ?? "60"));
+            return new RefreshTokenResponseDto
+            {
+                AccessToken = newAccessToken,
+                RefreshToken = newRefreshToken.Token,
+                AccessTokenExpiresAt = accessTokenExpiry,
+                RefreshTokenExpiresAt = newRefreshToken.ExpiresAt
+            };
+        }
+
+        public async Task<bool> RevokeTokenAsync(string token, string ipAddress)
+        {
+            var user = await GetUserByRefreshToken(token);
+            var refreshToken = user.RefreshTokens.Single(rt => rt.Token == token);
+            if (!refreshToken.IsActive)
+            {
+                return false;
+            }
+            refreshToken.RevokedAt = DateTime.UtcNow;
+            refreshToken.RevokedByIp = ipAddress;
+            await _context.SaveChangesAsync();
+            return true;
+        }
+        private string GenerateAccessToken(User user)
         {
             // var jwtSettings = _configuration.GetSection("JwtSettings");
             // var secretKey = jwtSettings["SecretKey"];
@@ -169,6 +227,43 @@ namespace TaskManagement.Services
 
 
 
+        }
+
+        private RefreshToken GenerateRefreshToken(string ipAddress)
+        {
+            var refreshTokenExpiry = double.Parse(_configuration["JwtSettings:RefreshTokenExpirationInDays"] ?? "7");
+            var randomBytes = new byte[64];
+            using var rng = RandomNumberGenerator.Create();
+            rng.GetBytes(randomBytes);
+            var refreshToken = Convert.ToBase64String(randomBytes);
+            return new RefreshToken
+            {
+                Token = refreshToken,
+                ExpiresAt = DateTime.UtcNow.AddDays(refreshTokenExpiry),
+                CreatedAt = DateTime.UtcNow,
+                CreatedByIp = ipAddress
+            };
+
+        }
+
+        private async Task RemoveOldRefreshTokens(int userId)
+        {
+            var tokensToRemove = await _context.RefreshTokens.Where(rt => rt.UserId == userId && !rt.IsActive && rt.CreatedAt.Value.AddDays(30) < DateTime.UtcNow).ToListAsync();
+            if (tokensToRemove.Any())
+            {
+                _context.RefreshTokens.RemoveRange(tokensToRemove);
+                await _context.SaveChangesAsync();
+            }
+        }
+
+        private async Task<User> GetUserByRefreshToken(string token)
+        {
+            var user = await _context.Users.Include(u => u.Role).Include(u => u.RefreshTokens).SingleOrDefaultAsync(u => u.RefreshTokens.Any(rt => rt.Token == token));
+            if (user == null)
+            {
+                throw new UnauthorizedAccessException("Invalid refresh token.");
+            }
+            return user;
         }
 
     }

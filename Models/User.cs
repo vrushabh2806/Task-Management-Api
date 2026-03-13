@@ -12,5 +12,7 @@ namespace TaskManagement.Models
 
         public ICollection<TaskItem> Tasks { get; set; } = new List<TaskItem>();
 
+        public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
+
     }
 }

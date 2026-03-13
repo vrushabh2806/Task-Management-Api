@@ -13,6 +13,7 @@ namespace TaskManagement.Data
         public DbSet<TaskItem> Tasks{ get; set; }
 
         public DbSet<Role> Roles{get; set;}
+        public DbSet<RefreshToken> RefreshTokens{get; set;}
 
     
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -42,6 +43,10 @@ namespace TaskManagement.Data
 
                 modelBuilder.Entity<Role>()
                 .HasIndex(R=>R.Name)
+                .IsUnique();
+
+                modelBuilder.Entity<RefreshToken>()
+                .HasIndex(rt => rt.Token)
                 .IsUnique();
 
                 modelBuilder.Entity<Role>().HasData(
