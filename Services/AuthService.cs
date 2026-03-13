@@ -14,14 +14,22 @@ using System.Net;
 using System.Security.Cryptography;
 using TaskManagement.Migrations;
 using Microsoft.Identity.Client;
+using TaskManagement.Repositories;
 namespace TaskManagement.Services
 {
     public class AuthService : IAuthService
     {
+        private readonly IUserRepository _userRepository;
+        private readonly IRefreshTokenRepository _refreshTokenRepository;
+
         private readonly ApplicationDbContext _context;
         private readonly IConfiguration _configuration;
-        public AuthService(ApplicationDbContext context, IConfiguration configuration)
+
+        public AuthService(ApplicationDbContext context, IConfiguration configuration, IUserRepository userRepository, IRefreshTokenRepository refreshTokenRepository)
         {
+
+            _userRepository = userRepository;
+            _refreshTokenRepository = refreshTokenRepository;
             _context = context;
             _configuration = configuration;
         }
